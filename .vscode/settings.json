@@ -1,0 +1,10 @@
+{
+    "python.linting.enabled": true,
+    "python.defaultInterpreterPath": "/opt/ml/WorkSpace/test_space/.venv/bin/python3.8",
+    "python.formatting.provider": "black",
+    "python.formatting.blackArgs": [
+        "--line-length",
+        "88"
+    ],
+    "editor.formatOnSave": true
+}
