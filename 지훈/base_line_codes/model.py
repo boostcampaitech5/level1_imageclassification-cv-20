@@ -15,4 +15,15 @@ class CustomedModel(nn.Module):
 
     
 # class CombinedModel(nn.Module):
-    
+
+class ClassModel(nn.Module):
+    def __init__(self, mask_model, gender_model, age_model):
+        super().__init__()
+        
+        self.mask = mask_model
+        self.gender = gender_model
+        self.age = age_model
+        
+    def forward(self, x):
+        return self.mask(x)*6 + self.gender*3 + self.age
+        

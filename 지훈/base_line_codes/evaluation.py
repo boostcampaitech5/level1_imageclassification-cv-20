@@ -41,3 +41,4 @@ class Evaluation():
                 else:
                     label_accs.append(0)
             return label_accs, round(accuracy_score(self.preds, self.labels), 3), round(f1_score(self.preds, self.labels, average = f1_score_option), 3)      
+
