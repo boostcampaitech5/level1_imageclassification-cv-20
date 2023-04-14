@@ -1,9 +1,11 @@
 import os
 import pandas as pd
 import numpy as np
+import torch
 from PIL import Image
+from util.cutmix import CutMixCollator
 from util.util import get_age_label
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 
 
 class Age_Dataset(Dataset):
@@ -28,7 +30,9 @@ class Age_Dataset(Dataset):
         return len(self.images)
 
 
-def get_trainloader(label_type, path, transform, batch_size, shuffle):
+def get_trainloader(
+    label_type, path, transform, batch_size, shuffle, weighted_sampler, collate
+):
     """
     Args:
         label_type (string): Dataset type(Age, Gender, Mask)
@@ -36,6 +40,7 @@ def get_trainloader(label_type, path, transform, batch_size, shuffle):
         transform (Compose): transform object of torchvision or albumentations
         batch_size (int): train batch size
         shuffle (bool): shuffle at every epoch
+        weighted_sampler (bool): use weighted sample
 
     Return:
         torch.utils.data.dataloder: return dataloder object
@@ -43,4 +48,27 @@ def get_trainloader(label_type, path, transform, batch_size, shuffle):
     if label_type == "age":
         dataset = Age_Dataset(path, transform)
 
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+    if weighted_sampler:
+        labels = np.array(dataset.labels)
+        weight_arr = np.zeros_like(dataset.labels)
+
+        _, counts = np.unique(labels, return_counts=True)
+        for c in range(5):
+            weight_arr = np.where(labels == c, 1 / counts[c], weight_arr)
+
+        sampler = WeightedRandomSampler(weight_arr, 18900)
+    else:
+        sampler = None
+
+    if collate:
+        cutmix_collate = CutMixCollator(alpha=1.0)
+    else:
+        cutmix_collate = None
+
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        sampler=sampler,
+        collate_fn=cutmix_collate,
+    )

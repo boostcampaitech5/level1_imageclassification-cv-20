@@ -5,7 +5,9 @@ import wandb
 from tqdm import tqdm
 from data_loader.data_loader import get_trainloader
 import model.model as module_model
-from util.util import get_train_transform
+import loss.loss as module_loss
+from util.util import get_train_transform, assign_pretrained_weight
+from util import cutmix
 from sklearn.metrics import f1_score
 
 
@@ -27,15 +29,22 @@ def main(config):
         path=config["data_path"],
         transform=get_train_transform(),
         batch_size=config["batch_size"],
-        shuffle=True,
+        shuffle=False,
+        weighted_sampler=True,
+        collate=True,
     )
     model = getattr(module_model, config["model"])(3, 64, 5, drop_ratio=0.3).to(device)
-    wandb.watch(model, log_freq=100)
+    if config["pretrained"]:
+        model = assign_pretrained_weight(model, config["weight_path"])
 
-    criterion = getattr(torch.nn, config["loss"])(
-        weight=torch.tensor([4193, 4774, 2009, 6580, 1344]).to(
-            device=device, dtype=torch.float32
-        )
+    wandb.watch(model, log_freq=100)
+    class_weight = 1 - (
+        torch.tensor([4193, 4774, 2009, 6580, 1344]) / torch.tensor(18900)
+    )
+    criterion = getattr(cutmix, config["loss"])(
+        # weight=class_weight.to(device=device, dtype=torch.float32)
+        # classes=5
+        reduction="mean"
     )
     optimizer = getattr(torch.optim, config["optimizer"])(
         model.parameters(), lr=config["lr"], weight_decay=config["weight_decay"]
@@ -53,12 +62,16 @@ def main(config):
             label_cnt = torch.zeros(5)
             for imgs, labels in pbar:
                 imgs = imgs.to(device)
-                labels = labels.to(device)
+                t1, t2, lam = (
+                    labels[0].to(device),
+                    labels[1].to(device),
+                    torch.tensor(labels[2]).to(device),
+                )
 
                 optimizer.zero_grad()
 
                 pred = model(imgs)
-                loss = criterion(pred, labels)
+                loss = criterion(pred, (t1, t2, lam))
 
                 _, pred_idx = torch.max(pred, dim=1)
 
@@ -66,20 +79,29 @@ def main(config):
                 optimizer.step()
 
                 sum_loss += loss.item()
-                sum_acc += torch.sum(pred_idx == labels).item()
+                # sum_acc += torch.sum(pred_idx == labels).item()
+                correct1 = pred_idx.eq(t1).sum().item()
+                correct2 = pred_idx.eq(t2).sum().item()
+                sum_acc += lam * correct1 + (1 - lam) * correct2
+
                 sum_len += imgs.size(0)
 
-                sum_score += f1_score(
-                    pred_idx.detach().cpu(), labels.detach().cpu(), average="macro"
+                # sum_score += f1_score(
+                #     pred_idx.detach().cpu(), labels.detach().cpu(), average="macro"
+                # )
+                sum_score += lam * f1_score(
+                    pred_idx.detach().cpu(), t1.detach().cpu(), average="macro"
+                ) + (1 - lam) * f1_score(
+                    pred_idx.detach().cpu(), t2.detach().cpu(), average="macro"
                 )
 
-                unique, correct_cnt = torch.unique(
-                    pred_idx[pred_idx == labels].detach().cpu(), return_counts=True
-                )
-                correct[unique] += correct_cnt
+                # unique, correct_cnt = torch.unique(
+                #     pred_idx[pred_idx == labels].detach().cpu(), return_counts=True
+                # )
+                # correct[unique] += correct_cnt
 
-                idx, cnt = torch.unique(labels.detach().cpu(), return_counts=True)
-                label_cnt[idx] += cnt
+                # idx, cnt = torch.unique(labels.detach().cpu(), return_counts=True)
+                # label_cnt[idx] += cnt
 
                 train_loss = sum_loss / sum_len
                 train_acc = sum_acc / sum_len
@@ -91,7 +113,7 @@ def main(config):
                     F1=f"{train_f1:.3f}",
                 )
 
-        correct_class = correct / label_cnt
+        # correct_class = correct / label_cnt
         wandb.log(
             {
                 "train_loss": train_loss,
@@ -101,7 +123,7 @@ def main(config):
             step=epoch,
         )
 
-        print(f"correct : {correct_class}")
+        # print(f"correct : {correct_class}")
 
         if epoch % 5 == 0:
             torch.save(model.state_dict(), "check_point/model_" + str(epoch) + ".pth")
