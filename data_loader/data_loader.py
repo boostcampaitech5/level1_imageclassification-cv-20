@@ -4,16 +4,20 @@ import numpy as np
 import torch
 from PIL import Image
 from util.cutmix import CutMixCollator
-from util.util import get_age_label
+from util.util import get_labels
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 
 
-class Age_Dataset(Dataset):
+class Mask_Dataset(Dataset):
     def __init__(self, path, transform):
         train_data = pd.read_csv(os.path.join(path, "train.csv"))
         base_path = os.path.join(path, "images")
 
-        self.images, self.labels = get_age_label(train_data, base_path=base_path)
+        self.images, (
+            self.mask_labels,
+            self.gender_labels,
+            self.age_labels,
+        ) = get_labels(train_data, base_path=base_path)
         self.transform = transform
 
     def __getitem__(self, idx):
@@ -22,31 +26,31 @@ class Age_Dataset(Dataset):
         if self.transform != None:
             image = self.transform(image=img)["image"]
 
-        label = self.labels[idx]
-
-        return image, label
+        return image, (
+            self.mask_labels[idx],
+            self.gender_labels[idx],
+            self.age_labels[idx],
+        )
 
     def __len__(self):
         return len(self.images)
 
 
-def get_trainloader(
-    label_type, path, transform, batch_size, shuffle, weighted_sampler, collate
-):
+def get_trainloader(path, transform, batch_size, shuffle, weighted_sampler, collate):
     """
     Args:
-        label_type (string): Dataset type(Age, Gender, Mask)
         path (string): path with train.csv
         transform (Compose): transform object of torchvision or albumentations
         batch_size (int): train batch size
         shuffle (bool): shuffle at every epoch
         weighted_sampler (bool): use weighted sample
+        collate (bool): use cutmix
 
     Return:
         torch.utils.data.dataloder: return dataloder object
     """
-    if label_type == "age":
-        dataset = Age_Dataset(path, transform)
+
+    dataset = Mask_Dataset(path, transform)
 
     if weighted_sampler:
         labels = np.array(dataset.labels)

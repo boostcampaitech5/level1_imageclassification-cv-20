@@ -162,3 +162,4 @@ cython_debug/
 /check_point
 /wandb
 age_model.ipynb
+/plot

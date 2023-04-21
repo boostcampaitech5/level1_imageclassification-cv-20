@@ -6,7 +6,7 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
 
-def get_age_label(train_data, base_path):
+def get_labels(train_data, base_path):
     """
     Args:
         train_data (pandas.DataFrame): train.csv
@@ -17,39 +17,51 @@ def get_age_label(train_data, base_path):
     """
     images = []
     labels = []
+    mask_label = []
+    gender_label = []
+    age_label = []
 
     for p in train_data["path"]:
         _, gender, _, age = p.split("_")
 
         path = os.path.join(base_path, p)
-
         num = 0
-        if int(age) < 20:  # 0-19
-            pass
-        elif (int(age) >= 20) & (int(age) < 30):  # 20-29
-            num = 1
-        elif (int(age) >= 30) & (int(age) < 50):  # 30-49
-            num = 2
-        elif (int(age) >= 50) & (int(age) < 60):  # 50-59
-            num = 3
+
+        age_num = 0
+        if (int(age) >= 30) & (int(age) < 60):
+            num += 1
+            age_num = 1
         elif int(age) >= 60:
-            num = 4
+            num += 2
+            age_num = 2
+
+        gender_num = 0
+        if gender == "female":
+            num += 3
+            gender_num = 1
 
         for s in glob.glob(path + "/*"):
             name = s.split(os.sep)[-1]
             if name.find("incorrect") == 0:
                 images.append(os.path.join(path, name))
-                labels.append(num)
-
+                labels.append(num + 6)
+                mask_label.append(1)
+                gender_label.append(gender_num)
+                age_label.append(age_num)
             elif name.find("mask") == 0:
                 images.append(os.path.join(path, name))
                 labels.append(num)
-
+                mask_label.append(0)
+                gender_label.append(gender_num)
+                age_label.append(age_num)
             elif name.find("normal") == 0:
                 images.append(os.path.join(path, name))
-                labels.append(num)
+                labels.append(num + 12)
+                mask_label.append(2)
+                gender_label.append(gender_num)
+                age_label.append(age_num)
 
-    return images, labels
+    return images, (mask_label, gender_label, age_label)
 
 
 def get_train_transform():
@@ -61,9 +73,7 @@ def get_train_transform():
         [
             A.CenterCrop(320, 320, p=1),
             A.HorizontalFlip(p=0.5),
-            A.GaussianBlur((3, 7), 3, p=0.5),
-            A.ColorJitter(0.1, 0.2, 0.1, 0.1, p=0.5),
-            A.Sharpen((0.4, 0.7), p=1),
+            A.Cutout(num_holes=80, max_h_size=32, max_w_size=32, fill_value=0, p=1),
             A.Normalize(p=1),
             ToTensorV2(),
         ]

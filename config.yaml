@@ -2,7 +2,7 @@ model: 'ResNet'
 pretrained: True
 weight_path: '/opt/ml/WorkSpace/level1_imageclassification-cv-20/weights/resnet18-5c106cde.pth'
 
-loss: 'CutMixCriterion'
+loss: 'FocalLoss'
 
 optimizer: 'Adam'
 
@@ -12,4 +12,4 @@ weight_decay: 0.00001
 batch_size: 64
 data_path: '/opt/ml/input/data/train'
 
-run_name: 'resnet18_aug_dropout_pretrained_sampler_cutmix'
+run_name: 'resnet18_pretrained_cutout0.75'
